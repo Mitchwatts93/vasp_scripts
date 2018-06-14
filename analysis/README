@@ -1,0 +1,137 @@
+
+##########################################################################################
+##########################################################################################
+# USAGE
+##########################################################################################
+##########################################################################################
+
+calling the program right now works by having the script in the parent directory of the following:
+
+	if making convergence testing folders/files:
+		
+		To run, type: 'python3 vasp_conv.py -f m' on the command line in the current directory
+
+		an input folder which contains: example KPOINTS file with Gamma on the line before the specified kpoints (note this is essential right now),
+		an example INCAR file with ENCUT line to be edited by program, all other files needed (i.e. POSCAR, PROCAR, job) - this program doesn't touch these. Additionally, a conv_params file should be included, structure described below.
+		The script should be at the same level as the INPUT folder.
+		This will create a Kpts and E_cutoff file with all the specified energies and kpoints, and default E and Ks also.
+		These should be ready to run but checking files would be good practice.
+		A logfile will be produced with bash outputs from copying, editing, rmeoving etc.
+
+	if analysing a convergence test:
+		
+		To run, type: 'python3 vasp_conv.py -f a' on the command line in the current directory
+
+		the structure should be similar to that created by the making option
+		the program will accept the following variants for E and K parent folders:['Kpts', 'kpts', 'KPOINTS', 'kpoints', 'KPTS', 'k', 'K', 'Ks', 'ks']. ['E_cutoff', 'E', 'Ecuts', 'Es', 'energy', 'Energy', 'ecuts']. 
+		Note currently there is no test for more than one folder each with these names, the current implementation will take the last alphabetically to be the one to analyse
+		The sub directories containing individual runs will then be analysed for each
+		Note that only subdirectories confirming to rules in the program will be analysed. for energy directory names must be an integer. for kpoints they must be a '-' delimited name e.g. 4-1-3. Note there may be a bug in writing to csv the names of the kpoints if first two kpoints are longer than one digit, should still write okay but will likely not sort correctly. Therefore the differences printed will be wrong.
+		The program will find the string 'y=' in the OUTCAR file of each directory, and take the number next to this. note it assumes the number is negative, and has a decimal point e.g. -66.847218472384. if the number is positive or no decimal then output to csv will be incorrect.
+		A csv in  a new folder 'convergence_details' will then be created. This will have a form as shown in example below.
+		the energies for each convergence test, sorted in order, and the enrgy differences will be printed out
+		other information such as date and time, and default k, E will also be printed. Note this is appended so latest run will always be added at the bottom
+		Finally, a POSCAR will be added to this folder from the INPUT folder for documentation sake.
+
+
+	if making on the fly new directories:
+
+		To run, type: 'python3 vasp_conv.py -f fly' on command line in current directory. Do this from the level where INPUT is also found
+
+		the program works by asking the user questions about what they want. Currently it only works with either k or e, not both at the same time
+		In the future on the fly editing will be made available, currently only creating works
+		user must input the kpts or energies they want to make on the fly. comma seperated with no spaces, kpoints must be dash seperated
+		then the default energy or kpoints to use. kpoints dash seperated
+		this information is then used to make a file tree of what needs to be made
+		then this file tree is used to make the directories, copy in all files from the input file and edit the INCAR and KPOINTS files appropriately
+		these are all made in a sub directory called fly in either kpoints or ecut that is already there (note this currently only works if kpts directory name is 'Kpts', energy is 'E_cutoff')
+		a log file for the on the fly creation, date and time stamped, is created with the usual log file information, except now only useful for either kpts or e depending what was chosen.
+
+
+
+##########################################################################################
+##########################################################################################
+#Format of conv_params file
+##########################################################################################
+##########################################################################################
+
+# Ensure that INCAR has ENCUT in it, and KPOINTS has Gamma in it, just before where KPOINTS should be added.
+
+#note that this file should be names conv_params and be located in your INPUT folder
+#Your INPUT folder should contian all files you wish to copy. This script will make directories as specified by
+# the format below, it will edit releavnt files but won't touch others, e.g. your job files won't be edited
+
+#E_low_range E_multiple E_higg_range    e.g. 200 50 300 will make 200, 250 and 300 values
+#list of space separated kpoints which are dash delimited. e.g. 4-4-4 3-3-3 2-2-2
+#default energy cutoff as a number
+#default Kpts as k-k-k
+
+##########################################################################################
+##########################################################################################
+
+#example csv output
+##########################################################################################
+##########################################################################################
+
+This file shows the convergence details for files checked in this folder.
+file was written (data recorded) on: 2018-04-11 18:06:57
+convergence details for cutoff energy testing follows
+note the default kpts used were: 6-1-4
+cutoff energy,energy (eV),difference (eV)
+300,-66.46445705
+350,-66.50319485,-0.03873780000000693
+400,-66.51145541,-0.00826055999999653
+450,-66.51225006,-0.0007946500000031165
+500,-66.51264113,-0.00039107000000626613
+550,-66.51323634,-0.0005952100000001792
+600,-66.51421439,-0.0009780500000005077
+650,-66.51512689,-0.0009124999999983174
+700,-66.51546069,-0.0003337999999928343
+750,-66.51541468,4.600999999126998e-05
+
+convergence details for kpts testing follows
+note the default energy used was: 400 ev
+kpoints,energy (eV)
+4-1-3,-66.20421349
+4-1-4,-66.3824245,-0.17821100999999828
+5-1-4,-66.48015137,-0.09772687000000246
+6-1-4,-66.51145541,-0.03130403999999487
+6-1-5,-66.52399289,-0.012537480000005985
+7-1-5,-66.53482376,-0.010830869999992387
+7-1-6,-66.54023614,-0.005412380000009875
+7-2-6,-66.54023365,2.4899999999661304e-06
+
+
+##########################################################################################
+##########################################################################################
+
+
+
+
+
+##########################################################################################
+# to do
+##########################################################################################
+# - add docstrings and doctests
+# - clean it up and add some abstraction barriers
+# - add more info to the output of analysis document e.g. run time and scf steps
+# - swap trees to class implementation
+# - fix re-intialising trees etc in new classes, just refer to the originals! instead initialise
+# e.g. the settings object
+# - test running from path, do directory paths etc work or need editing with cwd?
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+
+
+
+# note on subprocess. This may not be implemented well. Have not fully read documentation.
+# using shell = True can be a security hazard due to shell injection esp if command string is constructed from external
+# input (not really an issue here but not used for good practice)
+
+# further note: uisng pipe to capture output may cause issues if pipe buffer is filled, in which case it will cause the program to hang.
+# remove stderr/stdout from subprocess calls if this happens - this will cause bash outputs to be seen during running and will not allow details to be saved to log
+
+# documentation suggests using Popen with communicate() method when pipes are needed -> this seems to be after already using pipe
+# e.g. a.communicate() is the same as a.stderr.read(). not sure if this will cause an issue though...

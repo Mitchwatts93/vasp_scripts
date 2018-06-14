@@ -1,0 +1,75 @@
+
+########################################################################################################################
+# Author: Mitch Watts
+# Date: 14-6-18
+########################################################################################################################
+
+
+
+########################################################################################################################
+# USAGE
+########################################################################################################################
+
+# calling intercalate_struct:
+# from the command line, e.g.: python3 intercalate_struct.py Li 0.1
+# the arguments after the file are: the metal to intercalate with, the amount of atoms to add as a fraction of the 
+# number of atoms in the structure
+
+# argparse will then use these to call the intercalation_routine function
+# this will create a settings object and the intercalate object using these settings
+
+# when the intercalate object initialises, it will try to find the POSCAR file and load it as a pymatgen structure
+# it will then try to find a LOCPOT file, this is used to assess the best positions to use from Voronoi decomposition
+# currently there is only support for orthogonal cells
+# then any vacuum spaces will be identified, these interfere with the Voronoi decomposition so will be swapped out for 
+# a default value found in the settings object. This is only temporary and is corrected after V. decomposition
+# then the macrodensity package is used to interpret the LOCPOT file.
+# interstitial sites are then found using pymatgen/voro++ Vornoi decomposition (looking for Voronoi vertices - can be 
+# changed in settings object), Voronoi radii of these is also returned
+# the vacuum is then reinserted, and a list of interstitial sites and V. radii created
+
+# the intercalation_routine function will then continue, printing information to the terminal as it goes
+# first small Voronoi vertices are removed (small is defined by the fraction of the intercalant atom in settings)
+# then any sites outside of the structure are removed 
+# then any sites within layers are removed. note the way this is done will only work for monoelemental structures 
+# currently
+# then the potential from the LOCPOT file in sphere of radius of  Vornoi radii around each Voronoi vertex is calculated
+# (using spherical_potential function base don macrodensity cubic potential function)
+# then all combinations of the remaining sites are found, with the number of combinations noted
+# any combinations in which any two sites are too close together (see settings object) are removed
+# then the expected number of combinations is calculated
+# the combinations remaining are added to the original structure, resulting in a list of structures with different
+# intercalation sites
+# then a dictionary for each site is created with some useful information for later
+# if the settings are set so, then the structures are sorted by the potential sum of intercalant sites from the 
+# unintercalated LOCPOT file. the top n are then selected and all else thrown away
+# then the ewald sum for all combinations is calculated, and the structures remaining are sorted by this ewald sum
+# this will mean structure 0 should be the configuration with the ions furthest apart
+# the user is then informed if the number of structures produced is as expected, note there is a small bug here,
+# if you select the top n based on their potentials previously then the expected number will differ
+# then all the structures are written out in POSCAR format
+# a csv file is written with the information about each structure in, optionally the repr of the structure object
+# can also be written
+
+
+
+
+########################################################################################################################
+#TO DO
+########################################################################################################################
+#1 docstrings
+#2 make some of the methods more general so they'll work for any material
+#3 improve argparse so that it can take some user input for other settings
+#4 clean user input before passing it anywhere
+
+##5 additional options to reduce sites:
+##    remove any sites with wildly different potentials??
+##    remove any sites too close to the edges?
+##    remove any structures with low potential sum?
+
+####6 make the main class inherit all of Structure class, then don't need to call structure everytime, can just call 
+self? Issues when attempting this quickly, try again
+
+# fix small bugs
+########################################################################################################################
+
