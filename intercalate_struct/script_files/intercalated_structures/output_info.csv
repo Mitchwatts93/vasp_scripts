@@ -1,0 +1,25 @@
+############### 
+Below  is  the  information  for  the  final  structures  written 
+Accessed  at:  2018-06-14  at  time:  18:59:10 
+
+ 
+
+structure  number:  0
+potential_at_each_site [-4.667444015723537,  -4.676536119526746]
+variance_at_each_site [180.01833599868323,  180.27545580141484]
+Ewald_energy -3.1225870383971417
+sum_of_pots_from_locpot -9.343980135250284
+ 
+
+structure  number:  1
+potential_at_each_site [-4.775685775420455,  -4.676536119526746]
+variance_at_each_site [190.79495925537535,  180.27545580141484]
+Ewald_energy -0.06852320905209014
+sum_of_pots_from_locpot -9.4522218949472
+ 
+
+structure  number:  2
+potential_at_each_site [-4.667444015723537,  -4.775685775420455]
+variance_at_each_site [180.01833599868323,  190.79495925537535]
+Ewald_energy 3.5897997095083003
+sum_of_pots_from_locpot -9.443129791143992
