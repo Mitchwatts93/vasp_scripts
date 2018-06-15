@@ -2,6 +2,7 @@ import pymatgen as mg
 import argparse
 import datetime
 import csv
+import itertools
 from pymatgen.analysis.defects.point_defects import Interstitial, ValenceIonicRadiusEvaluator
 from pymatgen.core.structure import Structure
 from pymatgen.io.vasp import Poscar
@@ -41,11 +42,14 @@ import scipy.spatial.distance as spd
 ##    remove any structures with low potential sum?
 
 ####6 make the main class inherit all of Structure class, then don't need to call structure everytime, can just call self? Issues when attempting this quickly, try later
+
+# make tail recursive! uses a huge amount of memory
+
 ########################################################################################################################
 
 class Settings():
      def __init__(self, intercalant_type, intercalant_density, poscar_path = '', locpot_path = '', layered = True, only_sym_dist = False, coord_file_type = 'poscar', output_filepath = '',
-                 output_filename = 'POSCAR_intercalated' , vac_thresh = 6, default_vac = 3, voronoi_prox_crit = 1.8, voronoi_rad_cutoff_ratio = 0.2, delta = 1, top_structures = 0, write_structs_to_csv = False):
+                 output_filename = 'POSCAR_intercalated' , vac_thresh = 6, default_vac = 3, voronoi_prox_crit = 1.5, voronoi_rad_cutoff_ratio = 0.2, delta = 1, top_structures = 0, write_structs_to_csv = False):
 
          self.int_atom = intercalant_type
          self.int_dens = intercalant_density
@@ -57,13 +61,14 @@ class Settings():
          self.output_filename = output_filename
          self.vac_thresh = vac_thresh
          self.default_vac = default_vac
-         self.voronoi_prox_crit = voronoi_prox_crit
+         self.voronoi_prox_crit = voronoi_prox_crit # all atoms must be further apart than this distance!
          self.voronoi_rad_cutoff_ratio = voronoi_rad_cutoff_ratio
          self.delta = delta  # for vdw bonding criteria
          self.poscar_path = poscar_path
          self.locpot_path = locpot_path
          self.top_structures = top_structures # the number of structures from the top of the potential energy list you'd like to take
          self.write_structs_to_csv = write_structs_to_csv
+         self.locpot = False  # assume not present at the start
 
 
 class Intercalate(object):
@@ -89,6 +94,7 @@ class Intercalate(object):
             print('exiting prog')
             sys.exit()
 
+
         #raplce any vacuums with the default small value so that we can do voronoi analysis - it crashes for structures with large vacuum spaces
         # note the size of the vacuum size swapped isn't important, will find voronoi vertices there but they'll be removed as they'll be outside of the unshifted structure or inside layers!
         # only issue may be sites near the edges -> these will be ranked low due to potential sum
@@ -104,22 +110,26 @@ class Intercalate(object):
             else:
                 self.vasp_pot, self.NGX, self.NGY, self.NGZ, self.lattice = md.read_vasp_density('LOCPOT')
             self.grid_pot, self.electrons = md.density_2_grid(self.vasp_pot, self.NGX, self.NGY, self.NGZ)  # generate the grid of potentials
+            self.settings_obj.locpot = True
         except FileNotFoundError as e:
             print(e)
             print('The given filepath for the locpot did not find a locpot file, ensure LOCPOT is at the end '
                   'e.g. /LOCPOT. if no filepath was given then no locpot was found in the current directory.')
+            self.settings_obj.locpot = False
+
+
 
         # get the intersitials using voronoi decomposition
-        self.interstitial_sites = self.get_interstitials()
+        self.interstitial_sites = self.get_interstitials()   #### SLOW! very very slow!!
 
         # go back to the original, unshifted structure
-        self.shifted_structure, self.structure = self.structure.copy(), self.orig_struct.copy()
+        #self.shifted_structure = self.structure.copy()
+        self.structure = self.orig_struct.copy()
 
         # convert interstitial sites back to fractional coords (previously were in cartesian due to the shifts!
         self.interstitial_sites = [([i[0][0] / self.structure.lattice.a, i[0][1] / self.structure.lattice.b,
                                      i[0][2] / self.structure.lattice.c], i[1]) for i in
                                    self.interstitial_sites]
-
 
     def check_orthog_lat(self):
         alpha = int(self.structure.lattice.alpha)
@@ -224,7 +234,8 @@ class Intercalate(object):
 
     #### these methods are for removing sites and associated functions
     def exclude_small_voronoi(self):
-        interstitial_sites = [i for i in self.interstitial_sites if i[1] > self.settings_obj.atom_rad * self.settings_obj.voronoi_rad_cutoff_ratio] #this filters out anything smaller than factor* the ion radius
+        cutoff = self.settings_obj.atom_rad * self.settings_obj.voronoi_rad_cutoff_ratio
+        interstitial_sites = [i for i in self.interstitial_sites if i[1] > cutoff] #this filters out anything smaller than factor* the ion radius
         return interstitial_sites
 
     def remove_surface_atoms(self):
@@ -232,9 +243,9 @@ class Intercalate(object):
         b = self.structure.lattice.b
         c = self.structure.lattice.c
         lat_vecs = [a, b, c]
+
         interstitial_sites = [([i[0][j] for j in range(3) if ((i[0][j]*lat_vecs[j] < self.highest_atoms[j]) and (i[0][j]*lat_vecs[j] > self.lowest_atoms[j]))], i[1]) for i in self.interstitial_sites] #this will make a list only from coordinates that are between the bindings of atoms
         interstitial_sites = [i for i in interstitial_sites if len(i[0]) == 3] # the above list conc doesn't delete sites, just coordinates, so here delete any sites which have had any coordinates removed
-
         return interstitial_sites
 
     def remove_intralayer_atoms(self, structure, interstitial_sites):
@@ -362,19 +373,22 @@ class Intercalate(object):
 
     def find_all_combos(self):
 
-        ## use recurssion to find every combination of sites into subsets of size no_ions
-        def ion_combos(site_list, no_ions):
-            site_combo_lst = []
-            for i in range(len(site_list)):
-                if no_ions == 1:
-                    site_combo_lst.append(site_list[i])
-                else:
-                    for c in ion_combos(site_list[i + 1:], no_ions - 1):
-                        site_combo_lst.append(site_list[i] + c)
-            return site_combo_lst
+        site_list = [[i] for i in self.interstitial_sites]
+        iterlst = itertools.combinations(site_list, self.no_ions)
+        ## generator to edit the generator created by itertools
+        def flatten_output(iterable):
+            for i in itertools.count():
+                yield [i[0] for i in next(iterable)]
 
-        structure_list = ion_combos([[i] for i in self.interstitial_sites], self.no_ions)
+        output = flatten_output(iterlst)
+
+        ### remove this in future, you can just return the generator!
+        structure_list = []
+        for i in output:
+            structure_list.append(i)
+
         return structure_list
+
 
 
     ### methods for removing combinations of sites
@@ -444,12 +458,13 @@ class Intercalate(object):
         for i in range(len(structure_list)):
             pot_lst = []
             var_lst = []
-            for j in structure_list[i]:
-                pot_lst.append(j[2])
-                var_lst.append(j[3])
+            if self.settings_obj.locpot:
+                for j in structure_list[i]:
+                    pot_lst.append(j[2])
+                    var_lst.append(j[3])
             pot_sum = sum(pot_lst)
-            structure_list[i].insert(0, {
-                'sum_of_pots_from_locpot': pot_sum})  # insert it to the 0th element of the list of sites for that config
+            structure_list[i].insert(0,
+                        {'sum_of_pots_from_locpot': pot_sum})  # insert it to the 0th element of the list of sites for that config
             structure_list[i][0]['potential_at_each_site'] = pot_lst #add the potential at each site
             structure_list[i][0]['variance_at_each_site'] = var_lst # variance for each site
 
@@ -544,7 +559,7 @@ class Intercalate(object):
                   str(self.settings_obj.voronoi_prox_crit) + 'A apart are removed')
 
         elif message == 'ewald':
-            print('sorting sites by Ewald summation, this takes ions as oxidation state +1, '
+            print('sorting combinations by Ewald summation, this takes ions as oxidation state +1, '
                   'and spreads the negative equally over all original structure sites')
 
         elif message == 'final':
@@ -711,29 +726,35 @@ def intercalation_routine(metal, density):
     settings = Settings(metal, density)
     intercalated = Intercalate(settings)
 
-
+    #fast
     intercalated.report_to_user('exclude_small_voronoi')
     intercalated.interstitial_sites = intercalated.exclude_small_voronoi()  # gets rid of any stupidly small spaces
     print('\n')
 
 
     intercalated.report_to_user('outside_structure')
+    # fast
     intercalated.interstitial_sites = intercalated.remove_surface_atoms()  # get rid of any that aren't intercalated, and are just on the surfaces
     print('\n')
 
-
+    #fast
     intercalated.report_to_user('intralayer_sites')
     intercalated.interstitial_sites = intercalated.remove_intralayer_atoms(intercalated.structure,
             intercalated.interstitial_sites)  # get rid of any that aren't intercalated, and are just on the surfaces
     print('\n')
 
+    if settings.locpot:
+        intercalated.report_to_user('sorting_by_potential')
+        intercalated.interstitial_sites = intercalated.add_potentials()  # add the potentials and variance to the interstitial_sites list
+        print('\n')
 
-    intercalated.report_to_user('sorting_by_potential')
-    intercalated.interstitial_sites = intercalated.add_potentials()  # add the potentials and variance to the interstitial_sites list
-    print('\n')
+    if intercalated.calc_no_combos() > 1000000000000:
+        print('too many combinations!!!! Tail recursion not yet implimented, this will use all the RAM. Reducing the number of combinations')
+
 
 
     intercalated.report_to_user('adding_combos')
+    # fast as can be, maybe return just the generator but its just moving the problem down the line
     intercalated.structure_list = intercalated.find_all_combos()  # find all combinations of the interstitials found so far
     len_before_removal = len(intercalated.structure_list)  # how many elements before you remove th eoverlapping ones?
 
@@ -750,8 +771,9 @@ def intercalation_routine(metal, density):
 
     # add option in argparse to edit the setting that allows this
     if settings.top_structures:
-        intercalated.structure_list = intercalated.sort_sites_by_pot_sum() # sort the found interstitial combos by their potential sum, largest to smallest
-        intercalated.structure_list = intercalated.structure_list[0:settings.top_structures] # pick the top in terms of potential points
+        if settings.locpot:
+            intercalated.structure_list = intercalated.sort_sites_by_pot_sum() # sort the found interstitial combos by their potential sum, largest to smallest
+            intercalated.structure_list = intercalated.structure_list[0:settings.top_structures] # pick the top in terms of potential points
 
 
     intercalated.intercalated_structs = intercalated.add_interstitials()  # adds the sites to structure, most energetically favourable first
